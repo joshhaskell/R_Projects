@@ -1,0 +1,199 @@
+---
+title: "Covid-19"
+author: "Josh Haskell"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Exploratory Data Analysis
+
+***The data for this project was downloaded from the following website:
+https://covidtracking.com/data/download***
+
+```{r}
+#Load libraries and data
+library(dplyr)
+library(ggplot2)
+library(readr)
+
+Covid_Data_All <- read_csv("Covid Data.csv") %>% 
+  mutate(date = as.Date(date, format = "%m/%d/%Y"))
+```
+***I started by inspecting the data, and ran a few plots looking at the positivity and death rates over different time periods.***
+
+```{r}
+#Grouping by state and selecting columns
+Covid_Data_State <- Covid_Data_All %>% 
+  group_by(state)%>% 
+  mutate(Total_Death = sum(deathIncrease), Total_Negative = sum(negativeIncrease), Total_Positive = sum(positiveIncrease), Total_Tests = Total_Negative + Total_Positive, Total_Positivity_Rate = Total_Positive/Total_Tests, Total_Death_Rate = Total_Death/Total_Positive) %>% 
+  select(state,Total_Death, Total_Negative, Total_Positive, Total_Tests, Total_Positivity_Rate, Total_Death_Rate)
+
+#Plot using all days
+Covid_Data_State %>% 
+  ggplot(aes(x = Total_Positivity_Rate, y = Total_Death_Rate))+
+  geom_point()+
+  geom_smooth(method = "lm", se = FALSE)+
+  labs(title = "Positivity Rate to Death Rate")
+
+#Filtering out the early spring surge by using June 1st as the start date
+Covid_Data_State_AfterMay <- Covid_Data_All %>% 
+  group_by(state)%>% 
+  filter(date >= "2020-6-01") %>% 
+  mutate(Total_Death = sum(deathIncrease), Total_Negative = sum(negativeIncrease), Total_Positive = sum(positiveIncrease), Total_Tests = Total_Negative + Total_Positive, Total_Positivity_Rate = Total_Positive/Total_Tests, Total_Death_Rate = Total_Death/Total_Positive) %>% 
+  select(date,state,Total_Death, Total_Negative, Total_Positive, Total_Tests, Total_Positivity_Rate, Total_Death_Rate)
+  
+#Plot using the June 1st through present 
+Covid_Data_State_AfterMay %>% 
+  ggplot(aes(x = Total_Positivity_Rate, y = Total_Death_Rate))+
+  geom_point()+
+  geom_smooth(method = "lm", se = FALSE)+
+  labs(title = "Positivity Rate to Death Rate Since June 1st")
+
+#Using days since the beginning of September
+Covid_Data_State_After_Sep <- Covid_Data_All %>% 
+  group_by(state)%>% 
+  filter(date >= "2020-9-01") %>% 
+  mutate(Total_Death = sum(deathIncrease), Total_Negative = sum(negativeIncrease), Total_Positive = sum(positiveIncrease), Total_Tests = Total_Negative + Total_Positive, Total_Positivity_Rate = Total_Positive/Total_Tests, Total_Death_Rate = Total_Death/Total_Positive) %>% 
+  select(date,state,Total_Death, Total_Negative, Total_Positive, Total_Tests, Total_Positivity_Rate, Total_Death_Rate)
+  
+#Plot using September 1st through present
+Covid_Data_State_After_Sep %>% 
+  ggplot(aes(x = Total_Positivity_Rate, y = Total_Death_Rate))+
+  geom_point()+
+  geom_smooth(method = "lm", se = FALSE)+
+  labs(title = "Positivity Rate to Death Rate Since September 1st")
+```
+
+***I looked at several different plots filtering for Missouri.***
+
+```{r}
+#Filter for MO
+Covid_Data_MO <- Covid_Data_All %>% 
+  filter(state == "MO") %>% 
+  select(date, positiveIncrease,deathIncrease)
+  
+Covid_Data_MO %>% 
+  ggplot(aes(x = date, y = positiveIncrease))+
+  geom_smooth(se = FALSE)+
+  labs(title = "MO Daily Positive Tests")
+
+Covid_Data_MO %>% 
+  ggplot(aes(x = date, y = deathIncrease))+
+  geom_smooth(se = FALSE)+
+  labs(title = "MO Daily Deaths")
+
+#Filter for 30 days before Labor Day
+Covid_Data_MO_BeforeLaborDay <- Covid_Data_All %>% 
+  select(date,state,positiveIncrease,deathIncrease) %>% 
+  filter(state == "MO", date >= "2020-08-07" & date < "2020-09-07") %>% 
+  arrange(date)
+
+Covid_Data_MO_BeforeLaborDay %>% 
+  ggplot(aes(x = date,y = positiveIncrease))+
+  geom_smooth(se = FALSE)+
+  labs(title = "MO Daily Positive Tests 30 Days Before Labor Day")
+
+Covid_Data_MO_BeforeLaborDay %>% 
+  ggplot(aes(x = date,y = deathIncrease))+
+  geom_smooth(se = FALSE)+
+  labs(title = "MO Daily Deaths 30 Days Before Labor Day")
+
+#Filter for 30 days after Labor Day
+Covid_Data_MO_AfterLaborDay <- Covid_Data_All %>% 
+  select(date,state,positiveIncrease,deathIncrease) %>% 
+  filter(state == "MO", date >= "2020-09-07" & date <= "2020-10-07") %>% 
+  arrange(date)
+
+Covid_Data_MO_AfterLaborDay %>% 
+  ggplot(aes(x = date,y = positiveIncrease))+
+  geom_smooth(se = FALSE)+
+  labs(title = "MO Daily Positive Tests 30 Days After Labor Day")
+
+Covid_Data_MO_AfterLaborDay %>% 
+  ggplot(aes(x = date,y = deathIncrease))+
+  geom_smooth(se = FALSE)+
+  labs(title = "MO Daily Deaths 30 Days After Labor Day")
+```
+
+## Question
+
+***Did Labor Day significantly increase average daily Covid-19 cases in Missouri the 30 days following the holiday versus the 30 days prior? Stated formally:***
+
+***Ho: Mu cases 30 days before = Mu cases 30 days after.***
+
+***Ha: Mu cases 30 days before != Mu cases 30 days after.***
+
+```{r}
+#Paired t-test
+Covid_Data_MO_BeforeLaborDay <- Covid_Data_All %>% 
+  select(date,state,positiveIncrease) %>% 
+  filter(state == "MO", date >= "2020-08-07" & date < "2020-09-07") %>% 
+  arrange(date)
+
+Covid_Data_MO_AfterLaborDay <- Covid_Data_All %>% 
+  select(date,state,positiveIncrease) %>% 
+  filter(state == "MO", date >= "2020-09-07" & date <= "2020-10-07") %>% 
+  arrange(date)
+
+#Descriptive Statistics
+mean(Covid_Data_MO_BeforeLaborDay$positiveIncrease)
+sd(Covid_Data_MO_BeforeLaborDay$positiveIncrease)
+mean(Covid_Data_MO_AfterLaborDay$positiveIncrease)
+sd(Covid_Data_MO_AfterLaborDay$positiveIncrease)
+
+#Conducting Paired t-test
+t.test(Covid_Data_MO_BeforeLaborDay$positiveIncrease, Covid_Data_MO_AfterLaborDay$positiveIncrease, paired = TRUE)
+```
+***With a p-value of 0.1489, which is greater than set alpha of 0.05, we retain the null hypothesis.***
+
+***A paired t-test suggested Labor Day did not significantly increase the average number of daily cases (p = 0.1489) in MO.***
+
+## Question
+
+***My hypothesis question here is does the proportion of total Covid-19 deaths to total cases differ between Missouri and Wisconsin the 30 days after Labor Day?***
+
+***Ho: Proportion MO = Proportion WI.***
+
+***Ha: Proportion MO != Proportion WI.***
+
+```{r}
+#Two Sample test of proportions
+
+#Total Deaths for MO
+DeathsMO <- Covid_Data_All %>% 
+  select(date,state,deathIncrease) %>% 
+  filter(state == "MO", date > "2020-09-07" & date <= "2020-10-07") %>% 
+  summarise(Deaths = sum(deathIncrease))
+
+#Total Deaths for WI
+DeathsWI <- Covid_Data_All %>% 
+  select(date,state,deathIncrease) %>% 
+  filter(state == "WI", date > "2020-09-07" & date <= "2020-10-07") %>% 
+  summarise(Deaths = sum(deathIncrease))
+
+#Total Cases for MO
+TotalMO <- Covid_Data_All %>% 
+  select(date,state,positiveIncrease) %>% 
+  filter(state == "MO", date > "2020-09-07" & date <= "2020-10-07") %>% 
+  summarise(Total_Cases = sum(positiveIncrease))
+
+#Total Cases for WI
+TotalWI <- Covid_Data_All %>% 
+  select(date,state,positiveIncrease) %>% 
+  filter(state == "WI", date > "2020-09-07" & date <= "2020-10-07") %>% 
+  summarise(Total_Cases = sum(positiveIncrease))
+
+#Conducting a two-sample test of proportions
+died <- as.numeric(c(DeathsMO, DeathsWI))
+total <- as.numeric(c(TotalMO, TotalWI))
+prop.test(died, total)
+```
+***With a p-value of .0000, which is less than alpha of 0.05, we reject the null hypothesis.***
+
+***A two-sample test of proportions suggested the death rate proportion for Missouri (prop = 0.014) and Wisconsin (prop = 0.004) for the 30 days following Labor Day were statistically different (p < 0.05).***
+
+
+

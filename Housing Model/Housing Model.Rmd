@@ -1,0 +1,143 @@
+---
+title: "House Sale Price Model"
+author: "Josh Haskell"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(ggplot2)
+library(dplyr)
+library(readr)
+library(tidyr)
+```
+
+# Train
+
+***I will be using housing data to train a model for house sale price.***
+
+## Pre-process
+    
+```{r}
+#Load Data
+house_data <- read_csv("train.csv")
+
+#Removing variables with more than 10% missing observations, renaming and mutating variables
+remove_variables <- which(colMeans(is.na(house_data))>0.1)
+house_data_cleaned <- house_data[-remove_variables] %>% 
+  rename(SecondFlrSF = '2ndFlrSF', FirstFlrSF = '1stFlrSF') %>% 
+  mutate(TotalSF = SecondFlrSF + FirstFlrSF)
+  
+#Remaining missing values
+#I assumed there was no masonry veneer for missing values, and changed values to None
+house_data_cleaned$MasVnrType <- replace_na(house_data_cleaned$MasVnrType,  "None")
+house_data_cleaned$MasVnrArea <- replace_na(house_data_cleaned$MasVnrArea,  "0")
+  
+#Since the majority (933 out of 1020) are Standard Circuit Breakers & Romex (SBrkr), I replaced any NAs to this value 
+table(house_data_cleaned$Electrical)
+house_data_cleaned$Electrical <- replace_na(house_data_cleaned$Electrical, "SBrkr")
+
+#I used the average value for the year built
+house_data_cleaned$GarageYrBlt <- replace_na(house_data_cleaned$GarageYrBlt, round(mean(house_data_cleaned$GarageYrBlt,na.rm = TRUE), digits = 0))
+
+#For the rest of these values, I assumed there was no basement or garage, so I changed the value to None
+house_data_cleaned$BsmtQual <- replace_na(house_data_cleaned$BsmtQual, "None")
+house_data_cleaned$BsmtQual <- factor(house_data_cleaned$BsmtQual, levels = c("Ex","Gd","TA","Fa","Po","None"))
+
+house_data_cleaned$BsmtCond <- replace_na(house_data_cleaned$BsmtCond, "None")
+house_data_cleaned$BsmtCond <- factor(house_data_cleaned$BsmtCond, levels = c("Ex","Gd","TA","Fa","Po","None"))
+
+house_data_cleaned$BsmtExposure <- replace_na(house_data_cleaned$BsmtExposure, "None")
+house_data_cleaned$BsmtExposure <- factor(house_data_cleaned$BsmtExposure,levels = c("Gd","Av","Mn","No","None"))
+
+house_data_cleaned$BsmtFinType1 <- replace_na(house_data_cleaned$BsmtFinType1, "None") 
+house_data_cleaned$BsmtFinType1 <- factor(house_data_cleaned$BsmtFinType1,levels = c("GLQ","ALQ","BLQ","Rec","LwQ","Unf","None"))
+
+house_data_cleaned$BsmtFinType2 <- replace_na(house_data_cleaned$BsmtFinType2, "None")
+house_data_cleaned$BsmtFinType2 <- factor(house_data_cleaned$BsmtFinType2, levels = c("GLQ","ALQ","BLQ","Rec","LwQ","Unf","None"))
+
+house_data_cleaned$GarageType <- replace_na(house_data_cleaned$GarageType, "None")
+house_data_cleaned$GarageType <- factor(house_data_cleaned$GarageType,levels = c("2Types","Attchd","Basment","BuiltIn","CarPort","Detchd","None"))
+
+house_data_cleaned$GarageFinish <- replace_na(house_data_cleaned$GarageFinish, "None")
+house_data_cleaned$GarageFinish <- factor(house_data_cleaned$GarageFinish,levels = c("Fin","RFn","Unf","None"))
+
+house_data_cleaned$GarageQual <- replace_na(house_data_cleaned$GarageQual, "None")
+house_data_cleaned$GarageQual <- factor(house_data_cleaned$GarageQual,levels = c("Ex","Gd","TA","Fa","Po","None"))
+
+house_data_cleaned$GarageCond <- replace_na(house_data_cleaned$GarageCond, "None")
+house_data_cleaned$GarageCond <- factor(house_data_cleaned$GarageCond, levels = c("Ex","Gd","TA","Fa","Po","None"))
+```
+
+## Model
+
+***Modeling sale price as a function of chosen variables.***
+
+```{r}
+#inspecting different variables
+house_data_cleaned %>% 
+  select(SalePrice,LotArea,BedroomAbvGr,YrSold, FullBath,HalfBath,GarageCars,TotalSF, PoolArea) %>% 
+  pivot_longer(-SalePrice,names_to = "Variable", values_to = "Value") %>% 
+  ggplot(aes(x = Value, SalePrice))+
+  geom_point()+
+  geom_smooth(method = "lm", se = FALSE) + 
+  facet_wrap(~Variable, scales = "free_x")
+
+#Removing outliers for Lot Area
+house_data_cleaned <- house_data_cleaned %>% 
+  filter(LotArea < 30000)
+
+#Removing outliers for TotalSF
+house_data_cleaned <- house_data_cleaned %>% 
+  filter(TotalSF < 3500) 
+```
+```{r}
+#taking log of SalePrice
+house_data_cleaned %>% 
+  select(SalePrice,LotArea,BedroomAbvGr,YrSold, FullBath,HalfBath,GarageCars,TotalSF, PoolArea) %>% 
+  pivot_longer(-SalePrice,names_to = "Variable", values_to = "Value") %>% 
+  ggplot(aes(x = Value, log(SalePrice)))+
+  geom_point()+
+  geom_smooth(method = "lm", se = FALSE) + 
+  facet_wrap(~Variable, scales = "free_x")
+```
+
+***I decided to leave PoolArea out of the final model due to outliers. The year sold had very little linear relationship, so I left that variable out too. I decided to take the log of sale price since the data points were heteroskedastic.***
+
+
+```{r}
+mymodel <- lm(log(SalePrice) ~ LotArea + BedroomAbvGr + Neighborhood + FullBath + HalfBath + GarageCars + TotalSF, data = house_data_cleaned)
+
+mean(residuals(mymodel))
+
+summary(mymodel)
+```
+***With a p-value and residuals both near zero, this would suggest the model is a good fit. R-squared implies 81% of variability in the house sale price is explained by these variables.***
+
+# Test
+
+## Predict
+
+***I will be using test data to predict values from the model.***
+
+```{r}
+test_data <- read_csv("test.csv")
+
+remove_test_variables <- which(colMeans(is.na(test_data))>0.1)
+test_data_cleaned <- house_data[-remove_test_variables] %>% 
+  rename(SecondFlrSF = '2ndFlrSF', FirstFlrSF = '1stFlrSF') %>% 
+  mutate(TotalSF = SecondFlrSF + FirstFlrSF)
+
+test_data_prediction <- as.data.frame(predict(mymodel, test_data_cleaned, interval = "prediction"))
+```
+
+## Evaluate
+
+***Using predicted values from above to calculate the root mean square error of the predictions on the test data. This is one way to measure how well the model fits the test data.***
+
+```{r}
+RMSE_Test_Data <- sqrt((1/length(test_data_prediction$fit))*sum((test_data_prediction$fit - mean(test_data_prediction$fit))^2))
+RMSE_Test_Data
+```
+***With RMSE of the predicted values of 0.36, compared to 0.17 for the existing model, it suggests a good fit.***
